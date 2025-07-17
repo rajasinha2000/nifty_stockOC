@@ -4,5 +4,4 @@ plotly
 yfinance as yf
 nsepython
 requests
-streamlit
 streamlit-autorefresh
