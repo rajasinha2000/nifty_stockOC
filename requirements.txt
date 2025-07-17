@@ -1,7 +1,6 @@
 streamlit
 pandas
 plotly
-yfinance as yf
 nsepython
 requests
 streamlit-autorefresh
