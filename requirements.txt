@@ -2,4 +2,5 @@ streamlit
 pandas
 plotly
 requests
+yfinance as yf
 streamlit-autorefresh
