@@ -1,15 +1,27 @@
 import time
 import streamlit as st
-import requests
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
-from datetime import datetime
-import schedule
+import requests
+from streamlit_autorefresh import st_autorefresh
 
-# --- TELEGRAM CONFIG ---
+# 🔧 Telegram credentials
 BOT_TOKEN = "7735892458:AAELFRclang2MgJwO2Rd9RRwNmoll1LzlFg"
 CHAT_ID = "5073531512"
+
+# 🧠 Cache the previously sent stocks
+st.set_page_config(page_title="📈 Stock Screener", layout="wide")
+st.title("📈 Real-time Stock Screener Dashboard")
+
+# Auto-refresh every 5 minutes (300000 ms)
+st_autorefresh(interval=300000, key="auto-refresh")
+
+# 🔁 Store previously fetched stocks to compare
+if "prev_stocks" not in st.session_state:
+    st.session_state.prev_stocks = []
 
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -17,72 +29,61 @@ def send_telegram_message(message):
     try:
         requests.post(url, data=payload)
     except Exception as e:
-        print("Telegram error:", e)
+        st.warning(f"Telegram error: {e}")
 
-# --- FETCH STOCKS FUNCTION ---
 def fetch_stocks():
-    try:
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-gpu")
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
 
-        driver = webdriver.Chrome(options=chrome_options)
-        driver.get("https://intradayscreener.com/scan/26118/Raja_%285min_%2B_15min%29")
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
+
+    try:
+        url = "https://www.niftytrader.in/option-chain"
+        driver.get(url)
         time.sleep(5)
 
         soup = BeautifulSoup(driver.page_source, "html.parser")
-        driver.quit()
+        table = soup.find("table", {"id": "stocksInNews"})
 
-        table = soup.find("table")
         if not table:
+            st.warning("⚠️ Could not fetch stock data.")
             return []
 
-        stocks = []
-        for row in table.find_all("tr")[1:]:
-            cols = row.find_all("td")
-            if cols:
-                stocks.append(cols[0].text.strip())
-
+        rows = table.find_all("tr")[1:]  # skip header
+        stocks = [row.find_all("td")[1].text.strip() for row in rows if row.find_all("td")]
         return stocks
 
     except Exception as e:
-        print("⚠️ Could not fetch stock data:", e)
+        st.error(f"❌ Error fetching stocks: {e}")
         return []
-
-# --- STATE ---
-if "last_stocks" not in st.session_state:
-    st.session_state.last_stocks = []
-
-# --- MAIN SCREEN ---
-st.title("📈 Real-time Stock Screener Dashboard")
-
-placeholder = st.empty()
+    finally:
+        driver.quit()
 
 def run_screener():
-    current_time = datetime.now().strftime("%H:%M:%S")
     stocks = fetch_stocks()
 
-    with placeholder.container():
-        st.markdown(f"⏰ **Last checked:** {current_time}")
-        if stocks:
-            st.success(f"✅ Fetched {len(stocks)} stocks")
-            for stock in stocks:
-                st.markdown(f"- {stock}")
-        else:
-            st.warning("⚠️ No stock data found.")
+    if not stocks:
+        st.warning("⚠️ No stocks found.")
+        return
 
-    # Compare with last state
-    new_stocks = [s for s in stocks if s not in st.session_state.last_stocks]
+    # 🆕 Compare with previous
+    new_stocks = [s for s in stocks if s not in st.session_state.prev_stocks]
 
     if new_stocks:
-        now = datetime.now().strftime("%H:%M:%S")
-        message = f"📈 *New Stocks at {now}*\n\n" + "\n".join([f"🔸 {s}" for s in new_stocks])
+        st.subheader(f"📈 *New Stocks at {time.strftime('%H:%M:%S')}*")
+        for s in new_stocks:
+            st.markdown(f"🔸 **{s}**")
+        message = f"📈 *New Stocks at {time.strftime('%H:%M:%S')}*\n\n" + "\n".join(f"🔸 {s}" for s in new_stocks)
         send_telegram_message(message)
-        st.balloons()
+    else:
+        st.info("✅ No new stocks detected.")
 
-    st.session_state.last_stocks = stocks
+    # 💾 Update state
+    st.session_state.prev_stocks = stocks
 
-# --- REFRESH LOOP (every 5 minutes) ---
+# 🚀 Run
 run_screener()
-st_autorefresh = st.experimental_rerun
