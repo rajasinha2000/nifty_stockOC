@@ -1,6 +1,7 @@
+selenium
 streamlit
 pandas
-plotly
 requests
-yfinance
-streamlit-autorefresh
+python-telegram-bot
+schedule
+chromedriver-autoinstaller
