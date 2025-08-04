@@ -1,25 +1,40 @@
+import time
 import streamlit as st
 import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
-import time
+from datetime import datetime
+import schedule
 
-st.set_page_config(page_title="📈 Real-time Stock Screener", layout="centered")
-st.title("📈 Real-time Stock Screener Dashboard")
-st.markdown("This app checks for stocks every 5 minutes from Intraday Screener.")
+# --- TELEGRAM CONFIG ---
+BOT_TOKEN = "7735892458:AAELFRclang2MgJwO2Rd9RRwNmoll1LzlFg"
+CHAT_ID = "5073531512"
 
-# Store previous stock list
-if "previous_stocks" not in st.session_state:
-    st.session_state.previous_stocks = []
-
-def fetch_stocks():
-    url = "https://intradayscreener.com/scan/26118/Raja_%285min_%2B_15min%29"
-    headers = {"User-Agent": "Mozilla/5.0"}
-
+def send_telegram_message(message):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": message}
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.text, "html.parser")
-        table = soup.find("table")
+        requests.post(url, data=payload)
+    except Exception as e:
+        print("Telegram error:", e)
 
+# --- FETCH STOCKS FUNCTION ---
+def fetch_stocks():
+    try:
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-gpu")
+
+        driver = webdriver.Chrome(options=chrome_options)
+        driver.get("https://intradayscreener.com/scan/26118/Raja_%285min_%2B_15min%29")
+        time.sleep(5)
+
+        soup = BeautifulSoup(driver.page_source, "html.parser")
+        driver.quit()
+
+        table = soup.find("table")
         if not table:
             return []
 
@@ -28,33 +43,46 @@ def fetch_stocks():
             cols = row.find_all("td")
             if cols:
                 stocks.append(cols[0].text.strip())
+
         return stocks
 
     except Exception as e:
-        st.error(f"❌ Error fetching stocks: {e}")
+        print("⚠️ Could not fetch stock data:", e)
         return []
 
+# --- STATE ---
+if "last_stocks" not in st.session_state:
+    st.session_state.last_stocks = []
+
+# --- MAIN SCREEN ---
+st.title("📈 Real-time Stock Screener Dashboard")
+
+placeholder = st.empty()
+
 def run_screener():
-    st.info("⏳ Checking stocks...")
+    current_time = datetime.now().strftime("%H:%M:%S")
     stocks = fetch_stocks()
 
-    if stocks:
-        new_stocks = [stock for stock in stocks if stock not in st.session_state.previous_stocks]
-        st.session_state.previous_stocks = stocks
-
-        if new_stocks:
-            st.success(f"📈 *New Stocks at {time.strftime('%H:%M:%S')}*")
-            for stock in new_stocks:
-                st.markdown(f"🔸 {stock}")
+    with placeholder.container():
+        st.markdown(f"⏰ **Last checked:** {current_time}")
+        if stocks:
+            st.success(f"✅ Fetched {len(stocks)} stocks")
+            for stock in stocks:
+                st.markdown(f"- {stock}")
         else:
-            st.warning("🔁 No new stocks found.")
-    else:
-        st.error("⚠️ Could not fetch stock data.")
+            st.warning("⚠️ No stock data found.")
 
-# Button to trigger check manually
-if st.button("🔍 Start Screener Now"):
-    run_screener()
+    # Compare with last state
+    new_stocks = [s for s in stocks if s not in st.session_state.last_stocks]
 
-# Auto-refresh every 5 minutes (client side)
-st.markdown('<meta http-equiv="refresh" content="300">', unsafe_allow_html=True)
-st.caption("🔄 This page refreshes every 5 minutes.")
+    if new_stocks:
+        now = datetime.now().strftime("%H:%M:%S")
+        message = f"📈 *New Stocks at {now}*\n\n" + "\n".join([f"🔸 {s}" for s in new_stocks])
+        send_telegram_message(message)
+        st.balloons()
+
+    st.session_state.last_stocks = stocks
+
+# --- REFRESH LOOP (every 5 minutes) ---
+run_screener()
+st_autorefresh = st.experimental_rerun
