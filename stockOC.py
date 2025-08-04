@@ -4,7 +4,6 @@ from bs4 import BeautifulSoup
 import time
 
 st.set_page_config(page_title="📈 Real-time Stock Screener", layout="centered")
-
 st.title("📈 Real-time Stock Screener Dashboard")
 st.markdown("This app checks for stocks every 5 minutes from Intraday Screener.")
 
@@ -56,7 +55,6 @@ def run_screener():
 if st.button("🔍 Start Screener Now"):
     run_screener()
 
-# Auto-refresh every 5 minutes (300 seconds)
-st_autorefresh = st.experimental_rerun
-st.caption("🔄 This page refreshes every 5 minutes.")
+# Auto-refresh every 5 minutes (client side)
 st.markdown('<meta http-equiv="refresh" content="300">', unsafe_allow_html=True)
+st.caption("🔄 This page refreshes every 5 minutes.")
