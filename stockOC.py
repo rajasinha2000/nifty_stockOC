@@ -1,39 +1,57 @@
-import streamlit as st
+import tkinter as tk
+from tkinter import messagebox
 import time
-from datetime import datetime
 import requests
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+from datetime import datetime
 
-# Telegram Bot Details
+# Telegram bot settings
 BOT_TOKEN = "7735892458:AAELFRclang2MgJwO2Rd9RRwNmoll1LzlFg"
 CHAT_ID = "5073531512"
 SCREENER_URL = "https://intradayscreener.com/scan/26118/Raja_%285min_%2B_15min%29"
 
 previous_stocks = []
 
-st.set_page_config(page_title="Live Stock Screener", layout="wide")
-st.title("📈 Real-time Stock Screener Dashboard")
+# Tkinter GUI setup
+root = tk.Tk()
+root.title("Stock Screener Alert Bot")
 
-log_box = st.empty()
-stocks_display = st.empty()
+# Set up the GUI components
+status_label = tk.Label(root, text="Status: Waiting to start...", width=50)
+status_label.pack(pady=10)
+
+log_label = tk.Label(root, text="Log:", width=50, anchor="w")
+log_label.pack(pady=10)
+
+log_text = tk.Text(root, height=10, width=50)
+log_text.pack(pady=10)
 
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, data={'chat_id': CHAT_ID, 'text': message})
+    data = {'chat_id': CHAT_ID, 'text': message}
+    requests.post(url, data=data)
 
-def fetch_stocks():
-    options = Options()
-    options.add_argument("--headless")
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
-
+def fetch_screener_stocks():
     try:
+        options = Options()
+        options.add_argument("--headless")  # Run headless for background operation
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        service = Service(ChromeDriverManager().install())
+
+        driver = webdriver.Chrome(service=service, options=options)
         driver.get(SCREENER_URL)
-        time.sleep(5)
+
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.TAG_NAME, "mat-table"))
+        )
+
         table = driver.find_element(By.TAG_NAME, "mat-table")
         rows = table.find_elements(By.TAG_NAME, "mat-row")
         stocks = []
@@ -43,37 +61,47 @@ def fetch_stocks():
             if cells:
                 stocks.append(cells[0].text.strip())
 
+        driver.quit()
         return stocks
 
     except Exception as e:
-        st.error(f"❌ Error fetching stocks: {e}")
+        print(f"❌ Error fetching stocks: {e}")
         return []
 
-    finally:
-        driver.quit()
-
-def run_screener():
+def check_for_new_stocks():
     global previous_stocks
+    current_stocks = fetch_screener_stocks()
 
-    while True:
-        current_time = datetime.now().strftime("%H:%M:%S")
-        stocks = fetch_stocks()
+    if not current_stocks:
+        log_text.insert(tk.END, "⚠️ No stocks found.\n")
+        return
 
-        if not stocks:
-            log_box.warning(f"[{current_time}] ⚠️ No stocks found.")
-        else:
-            new_stocks = [s for s in stocks if s not in previous_stocks]
+    new_stocks = [s for s in current_stocks if s not in previous_stocks]
+    if new_stocks:
+        message = f"📈 *New Stocks at {datetime.now().strftime('%H:%M:%S')}*\n\n" + "\n".join(f"🔸 {s}" for s in new_stocks)
+        send_telegram_message(message)
+        log_text.insert(tk.END, f"New stocks found: {new_stocks}\n")
+        previous_stocks = current_stocks
+    else:
+        log_text.insert(tk.END, "✅ No new stocks.\n")
 
-            if new_stocks:
-                msg = f"📈 *New Stocks at {current_time}*\n\n" + "\n".join(f"🔸 {s}" for s in new_stocks)
-                send_telegram_message(msg)
-                log_box.success(f"[{current_time}] ✅ New stocks: {', '.join(new_stocks)}")
-                stocks_display.write(f"🆕 Stocks at {current_time}:\n\n" + "\n".join(new_stocks))
-                previous_stocks = stocks
-            else:
-                log_box.info(f"[{current_time}] No new stocks.")
-        
-        time.sleep(300)  # every 5 minutes
+    log_text.yview(tk.END)  # Scroll to the bottom
 
-if st.button("🚀 Start Screener"):
-    run_screener()
+def start_checking():
+    status_label.config(text="Status: Checking every 5 minutes...")
+    root.after(300000, start_checking)  # Call this function every 5 minutes
+    check_for_new_stocks()
+
+def stop_checking():
+    status_label.config(text="Status: Stopped.")
+    log_text.insert(tk.END, "✅ Stopped the checking.\n")
+
+# Start/Stop buttons
+start_button = tk.Button(root, text="Start Checking", command=start_checking, width=20)
+start_button.pack(pady=5)
+
+stop_button = tk.Button(root, text="Stop Checking", command=stop_checking, width=20)
+stop_button.pack(pady=5)
+
+# Run the GUI
+root.mainloop()
