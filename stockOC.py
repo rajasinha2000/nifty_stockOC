@@ -130,14 +130,14 @@ def analyze(symbol):
 
 # ===================== TELEGRAM ALERT FUNCTION =====================
 def send_telegram_alert(message):
+    token = "7735892458:AAELFRclang2MgJwO2Rd9RRwNmoll1LzlFg"
+    chat_id = "5073531512"
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": message}
     try:
-        token = st.secrets["telegram"]["token"]
-        chat_id = st.secrets["telegram"]["chat_id"]
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        response = requests.post(url, data={"chat_id": chat_id, "text": message})
-        print("Telegram response:", response.text)
-    except Exception as e:
-        print("Telegram alert failed:", e)
+        requests.post(url, data=payload)
+    except:
+        pass
 
 # ===================== MAIN LOOP =====================
 results = []
@@ -188,3 +188,4 @@ if not df_result.empty:
 
 else:
     st.warning("⚠️ No valid data found.")
+
