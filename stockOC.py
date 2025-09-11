@@ -1,80 +1,190 @@
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
-import time
+import streamlit as st
+import yfinance as yf
+import pandas as pd
 import requests
 from datetime import datetime
+from streamlit_autorefresh import st_autorefresh
 
-BOT_TOKEN = "7735892458:AAELFRclang2MgJwO2Rd9RRwNmoll1LzlFg"
-CHAT_ID = "5073531512"
-SCREENER_URL = "https://intradayscreener.com/scan/26118/Raja_%285min_%2B_15min%29"
+# ===================== CONFIG =====================
+st.set_page_config(page_title="Market Dashboard", layout="wide")
+st_autorefresh(interval=900_000, key="refresh_15min")  # Refresh every 15 mins
+st.title("📈 Triple Supertrend Screener (1m, 3m, 15m)")
 
-previous_stocks = []
+# ===================== STOCK LIST =====================
+index_list = ["^NSEI", "^NSEBANK"]
+stock_list = [
+    "ICICIBANK.NS", "HDFCBANK.NS", "INFY.NS", "TCS.NS", "RELIANCE.NS",
+    "LT.NS", "SBIN.NS", "KOTAKBANK.NS", "AXISBANK.NS", "BSE.NS",
+    "BHARTIARTL.NS", "TITAN.NS", "ASIANPAINT.NS", "OFSS.NS", "MARUTI.NS",
+    "BOSCHLTD.NS", "TRENT.NS", "NESTLEIND.NS", "ULTRACEMCO.NS", "MCX.NS",
+    "CAMS.NS", "COFORGE.NS", "HAL.NS", "KEI.NS"
+] + index_list
 
-# Chrome options setup
-chrome_options = Options()
-chrome_options.add_argument("--headless")  # Run headless for background operation
-chrome_options.add_argument("--no-sandbox")
-chrome_options.add_argument("--disable-dev-shm-usage")
+# ===================== SUPER TREND FUNCTION =====================
+def supertrend(df, period=10, multiplier=3):
+    df = df.copy()
+    df['High'] = df['High'].astype(float)
+    df['Low'] = df['Low'].astype(float)
+    df['Close'] = df['Close'].astype(float)
 
-# Set up the service for ChromeDriver
-service = Service(ChromeDriverManager().install())
+    # True Range & ATR
+    df['H-L'] = df['High'] - df['Low']
+    df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
+    df['L-PC'] = abs(df['Low'] - df['Close'].shift(1))
+    df['TR'] = df[['H-L','H-PC','L-PC']].max(axis=1)
+    df['ATR'] = df['TR'].rolling(period).mean()
 
-# Initialize the WebDriver with specified options
-driver = webdriver.Chrome(service=service, options=chrome_options)
+    hl2 = (df['High'] + df['Low']) / 2
+    df['Upper Basic'] = hl2 + multiplier * df['ATR']
+    df['Lower Basic'] = hl2 - multiplier * df['ATR']
+    df['Upper Band'] = df['Upper Basic']
+    df['Lower Band'] = df['Lower Basic']
 
-def fetch_screener_stocks():
-    try:
-        driver.get(SCREENER_URL)
-        # Wait for the table to load
-        WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.TAG_NAME, "mat-table"))
-        )
+    trend = [True]  # start bullish
+    for i in range(1, len(df)):
+        prev_trend = trend[-1]
 
-        # Find the table element after it loads
-        table = driver.find_element(By.TAG_NAME, "mat-table")
-        rows = table.find_elements(By.TAG_NAME, "mat-row")
+        upper = df['Upper Band'].iloc[i]
+        lower = df['Lower Band'].iloc[i]
 
-        stocks = []
-        for row in rows:
-            cells = row.find_elements(By.TAG_NAME, "mat-cell")
-            if cells:
-                stocks.append(cells[0].text.strip())
+        if prev_trend:
+            if df['Close'].iloc[i] < df['Lower Band'].iloc[i-1]:
+                trend.append(False)
+            else:
+                trend.append(True)
+                df.loc[df.index[i], 'Lower Band'] = max(df['Lower Band'].iloc[i], df['Lower Band'].iloc[i-1])
+        else:
+            if df['Close'].iloc[i] > df['Upper Band'].iloc[i-1]:
+                trend.append(True)
+            else:
+                trend.append(False)
+                df.loc[df.index[i], 'Upper Band'] = min(df['Upper Band'].iloc[i], df['Upper Band'].iloc[i-1])
 
-        print(f"🟡 Fetched stocks: {stocks}")
-        return stocks
+    df['Supertrend'] = trend
+    return df
 
-    except Exception as e:
-        print(f"❌ Error fetching stocks: {e}")
-        return []
+# ===================== DATA FETCH FUNCTION =====================
+@st.cache_data(ttl=900)
+def fetch_data(symbol, interval, lookback="2d"):
+    intervals_to_try = [interval]
+    if interval == "1m": intervals_to_try.append("5m")
+    if interval == "3m": intervals_to_try.append("5m")
+    if interval == "15m": intervals_to_try.append("30m")
 
-def send_telegram_message(message):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    data = {'chat_id': CHAT_ID, 'text': message}
-    requests.post(url, data=data)
+    for i in intervals_to_try:
+        try:
+            df = yf.download(symbol, interval=i, period=lookback, progress=False)
+            if not df.empty:
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
+                df = df[['High','Low','Close']].astype(float)
+                df = df.tz_localize(None)
+                return df
+        except Exception as e:
+            print(f"{symbol} fetch error ({i}): {e}")
+    return pd.DataFrame()
 
-def check_for_new_stocks():
-    global previous_stocks
-    current_stocks = fetch_screener_stocks()
+# ===================== ANALYSIS FUNCTION =====================
+def analyze(symbol):
+    timeframes = {"1m": "2d", "3m": "5d", "15m": "1mo"}
+    dfs = {}
+    for tf, period in timeframes.items():
+        df = fetch_data(symbol, tf, lookback=period)
+        if not df.empty:
+            dfs[tf] = df
 
-    if not current_stocks:
-        print("⚠️ No stocks found.")
-        return
+    if not dfs:
+        return {
+            "Stock": symbol.replace(".NS","").replace("^",""),
+            "CMP": None,
+            "1m Trend":"No Data",
+            "3m Trend":"No Data",
+            "15m Trend":"No Data",
+            "Final Signal":"⚠️ No Data"
+        }
 
-    new_stocks = [s for s in current_stocks if s not in previous_stocks]
-    if new_stocks:
-        message = f"📈 *New BULLISH Stocks at {datetime.now().strftime('%H:%M:%S')}*\n\n" + "\n".join(f"🔸 {s}" for s in new_stocks)
-        send_telegram_message(message)
-        previous_stocks = current_stocks
+    signals = {}
+    cmp_price = round(list(dfs.values())[-1]["Close"].iloc[-1], 2)
+
+    for tf, df_tf in dfs.items():
+        df_st = supertrend(df_tf, period=10, multiplier=3)
+        last = df_st.iloc[-1]
+        signals[tf] = "🟢 Bullish" if bool(last["Supertrend"]) else "🔴 Bearish"
+
+    if len(set(signals.values())) == 1:
+        final_signal = f"✅ Triple Supertrend {list(signals.values())[0]}"
     else:
-        print("✅ No new stocks.")
+        final_signal = "⏸️ Mixed"
 
-# Run every 5 minutes
-while True:
-    print(f"\n⏰ Checking screener at {datetime.now().strftime('%H:%M:%S')}...")
-    check_for_new_stocks()
-    time.sleep(300)  # Wait 5 minutes
+    for tf in ["1m","3m","15m"]:
+        if tf not in signals: signals[tf]="No Data"
+
+    return {
+        "Stock": symbol.replace(".NS","").replace("^",""),
+        "CMP": cmp_price,
+        "1m Trend": signals["1m"],
+        "3m Trend": signals["3m"],
+        "15m Trend": signals["15m"],
+        "Final Signal": final_signal
+    }
+
+# ===================== TELEGRAM ALERT FUNCTION =====================
+def send_telegram_alert(message):
+    try:
+        token = st.secrets["telegram"]["token"]
+        chat_id = st.secrets["telegram"]["chat_id"]
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        response = requests.post(url, data={"chat_id": chat_id, "text": message})
+        print("Telegram response:", response.text)
+    except Exception as e:
+        print("Telegram alert failed:", e)
+
+# ===================== MAIN LOOP =====================
+results = []
+progress_bar = st.progress(0)
+status_text = st.empty()
+last_refresh = st.empty()
+
+for i, stock in enumerate(stock_list,1):
+    status_text.text(f"Processing {i}/{len(stock_list)}: {stock}...")
+    try:
+        res = analyze(stock)
+        results.append(res)
+    except Exception as e:
+        print(f"{stock} error: {e}")
+    progress_bar.progress(i/len(stock_list))
+
+progress_bar.empty()
+status_text.empty()
+last_refresh.markdown(f"⏰ Last refreshed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+df_result = pd.DataFrame(results)
+
+if not df_result.empty:
+    # ===================== COLOR-CODED STYLING =====================
+    def highlight_trend(val):
+        if "Bullish" in val: return "color: green; font-weight:bold"
+        elif "Bearish" in val: return "color: red; font-weight:bold"
+        elif "Mixed" in val: return "color: orange; font-weight:bold"
+        elif "No Data" in val: return "color: gray; font-style:italic"
+        else: return ""
+
+    st.dataframe(df_result.style.applymap(
+        highlight_trend, subset=["1m Trend","3m Trend","15m Trend","Final Signal"]
+    ), use_container_width=True)
+
+    alerts = df_result[df_result["Final Signal"].str.contains("Triple Supertrend")]
+    if st.checkbox("Show Alerts Only"):
+        st.dataframe(alerts, use_container_width=True)
+
+    if not alerts.empty:
+        st.warning("🚨 Triple Supertrend Alert(s) Found!")
+        for _, row in alerts.iterrows():
+            send_telegram_alert(f"{row['Final Signal']} in {row['Stock']} ✅ CMP: {row['CMP']}")
+
+    # ===================== DOWNLOAD OPTION =====================
+    csv = df_result.to_csv(index=False).encode("utf-8")
+    st.download_button("📂 Download Screener CSV", data=csv, file_name="supertrend_screener.csv", mime="text/csv")
+
+else:
+    st.warning("⚠️ No valid data found.")
