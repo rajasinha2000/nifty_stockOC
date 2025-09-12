@@ -8,7 +8,41 @@ from streamlit_autorefresh import st_autorefresh
 # ===================== CONFIG =====================
 st.set_page_config(page_title="Market Dashboard", layout="wide")
 st_autorefresh(interval=900_000, key="refresh_15min")  # Refresh every 15 mins
+
+# ===================== ALERT STATUS INDICATOR =====================
+if "alerts_enabled" not in st.session_state:
+    st.session_state.alerts_enabled = False
+
+def alert_status_badge(enabled: bool):
+    if enabled:
+        return """
+        <div style="padding:8px; border-radius:10px; background-color:#d4edda; color:#155724; 
+                    font-weight:bold; font-size:18px; width:100%; text-align:center;">
+            🔔 Telegram Alerts: ON ✅
+        </div>
+        """
+    else:
+        return """
+        <div style="padding:8px; border-radius:10px; background-color:#f8d7da; color:#721c24; 
+                    font-weight:bold; font-size:18px; width:100%; text-align:center;">
+            🔕 Telegram Alerts: OFF ❌
+        </div>
+        """
+
+st.markdown(alert_status_badge(st.session_state.alerts_enabled), unsafe_allow_html=True)
+
+# ===================== TITLE =====================
 st.title("📈 Triple Supertrend Screener (1m, 3m, 15m)")
+
+# ===================== SIDEBAR ALERT CONTROL =====================
+st.sidebar.header("⚙️ Alert Controls")
+if st.sidebar.button("▶️ Start Alerts"):
+    st.session_state.alerts_enabled = True
+    st.sidebar.success("Telegram Alerts ENABLED ✅")
+
+if st.sidebar.button("⏹️ Stop Alerts"):
+    st.session_state.alerts_enabled = False
+    st.sidebar.warning("Telegram Alerts DISABLED ❌")
 
 # ===================== STOCK LIST =====================
 index_list = ["^NSEI", "^NSEBANK"]
@@ -136,26 +170,6 @@ def send_telegram_alert(message):
         requests.post(url, data=payload)
     except:
         pass
-# ===================== ALERT STATUS INDICATOR =====================
-if "alerts_enabled" not in st.session_state:
-    st.session_state.alerts_enabled = False
-
-# Status dikhane ke liye badge/emoji
-if st.session_state.alerts_enabled:
-    st.markdown("### 🔔 **Telegram Alerts: ON** ✅", unsafe_allow_html=True)
-else:
-    st.markdown("### 🔕 **Telegram Alerts: OFF** ❌", unsafe_allow_html=True)
-
-# Buttons to control alerts
-col1, col2 = st.columns(2)
-with col1:
-    if st.button("▶️ Start Alerts"):
-        st.session_state.alerts_enabled = True
-        st.success("Telegram Alerts ENABLED ✅")
-with col2:
-    if st.button("⏹️ Stop Alerts"):
-        st.session_state.alerts_enabled = False
-        st.warning("Telegram Alerts DISABLED ❌")
 
 # ===================== MAIN LOOP =====================
 results = []
@@ -206,6 +220,7 @@ if not df_result.empty:
 
 else:
     st.warning("⚠️ No valid data found.")
+
 
 
 
