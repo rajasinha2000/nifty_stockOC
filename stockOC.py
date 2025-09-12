@@ -129,7 +129,7 @@ def analyze(symbol):
 # ===================== TELEGRAM ALERT FUNCTION =====================
 def send_telegram_alert(message):
     token = "7735892458:AAELFRclang2MgJwO2Rd9RRwNmoll1LzlFg"
-    chat_id = "5073531512"
+    chat_id = "50735315122"
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {"chat_id": chat_id, "text": message}
     try:
@@ -186,5 +186,6 @@ if not df_result.empty:
 
 else:
     st.warning("⚠️ No valid data found.")
+
 
 
