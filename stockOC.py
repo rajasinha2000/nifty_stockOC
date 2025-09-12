@@ -212,7 +212,12 @@ if not df_result.empty:
     if not alerts.empty:
         st.warning("🚨 Triple Supertrend Alert(s) Found!")
         for _, row in alerts.iterrows():
-            send_telegram_alert(f"{row['Final Signal']} in {row['Stock']} ✅ CMP: {row['CMP']}")
+            alert_msg = f"{row['Final Signal']} in {row['Stock']} ✅ CMP: {row['CMP']}"
+            st.write(alert_msg)
+
+            # Send to Telegram only if enabled
+            if st.session_state.alerts_enabled:
+                send_telegram_alert(alert_msg)
 
     # ===================== DOWNLOAD OPTION =====================
     csv = df_result.to_csv(index=False).encode("utf-8")
