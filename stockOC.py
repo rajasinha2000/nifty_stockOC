@@ -136,6 +136,26 @@ def send_telegram_alert(message):
         requests.post(url, data=payload)
     except:
         pass
+# ===================== ALERT STATUS INDICATOR =====================
+if "alerts_enabled" not in st.session_state:
+    st.session_state.alerts_enabled = False
+
+# Status dikhane ke liye badge/emoji
+if st.session_state.alerts_enabled:
+    st.markdown("### 🔔 **Telegram Alerts: ON** ✅", unsafe_allow_html=True)
+else:
+    st.markdown("### 🔕 **Telegram Alerts: OFF** ❌", unsafe_allow_html=True)
+
+# Buttons to control alerts
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("▶️ Start Alerts"):
+        st.session_state.alerts_enabled = True
+        st.success("Telegram Alerts ENABLED ✅")
+with col2:
+    if st.button("⏹️ Stop Alerts"):
+        st.session_state.alerts_enabled = False
+        st.warning("Telegram Alerts DISABLED ❌")
 
 # ===================== MAIN LOOP =====================
 results = []
@@ -186,6 +206,7 @@ if not df_result.empty:
 
 else:
     st.warning("⚠️ No valid data found.")
+
 
 
 
