@@ -13,10 +13,8 @@ st.title("📈 Triple Supertrend Screener (1m, 3m, 15m)")
 # ===================== STOCK LIST =====================
 index_list = ["^NSEI", "^NSEBANK"]
 stock_list = [
-    "ICICIBANK.NS", "HDFCBANK.NS", "INFY.NS", "TCS.NS", "RELIANCE.NS",
-    "LT.NS", "SBIN.NS", "KOTAKBANK.NS", "AXISBANK.NS", "BSE.NS",
-    "BHARTIARTL.NS", "TITAN.NS", "ASIANPAINT.NS", "OFSS.NS", "MARUTI.NS",
-    "BOSCHLTD.NS", "TRENT.NS", "NESTLEIND.NS", "ULTRACEMCO.NS", "MCX.NS",
+    "HDFCBANK.NS","TCS.NS","RELIANCE.NS","LT.NS","KOTAKBANK.NS","BSE.NS",
+    "BHARTIARTL.NS", "TITAN.NS","OFSS.NS", "MARUTI.NS","KAYNES.NS", "TRENT.NS","ULTRACEMCO.NS",
     "CAMS.NS", "COFORGE.NS", "HAL.NS", "KEI.NS"
 ] + index_list
 
@@ -188,4 +186,5 @@ if not df_result.empty:
 
 else:
     st.warning("⚠️ No valid data found.")
+
 
