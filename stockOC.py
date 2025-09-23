@@ -32,7 +32,7 @@ def alert_status_badge(enabled: bool):
 st.markdown(alert_status_badge(st.session_state.alerts_enabled), unsafe_allow_html=True)
 
 # ===================== TITLE =====================
-st.title("📈 Triple Supertrend Screener (1m, 3m, 15m)")
+st.title("📈 Triple Supertrend Screener (1m, 3m, 15m) + 3m SMA Signals")
 
 # ===================== SIDEBAR ALERT CONTROL =====================
 st.sidebar.header("⚙️ Alert Controls")
@@ -76,9 +76,6 @@ def supertrend(df, period=10, multiplier=3):
     for i in range(1, len(df)):
         prev_trend = trend[-1]
 
-        upper = df['Upper Band'].iloc[i]
-        lower = df['Lower Band'].iloc[i]
-
         if prev_trend:
             if df['Close'].iloc[i] < df['Lower Band'].iloc[i-1]:
                 trend.append(False)
@@ -94,6 +91,20 @@ def supertrend(df, period=10, multiplier=3):
 
     df['Supertrend'] = trend
     return df
+
+# ===================== SMA FUNCTION =====================
+def sma_signal(df, period=20):
+    df = df.copy()
+    df["SMA"] = df["Close"].rolling(period).mean()
+    last_close = df["Close"].iloc[-1]
+    last_sma = df["SMA"].iloc[-1]
+
+    if last_close > last_sma:
+        return "📈 SMA Breakout"
+    elif last_close < last_sma:
+        return "📉 SMA Breakdown"
+    else:
+        return "⏸️ Near SMA"
 
 # ===================== DATA FETCH FUNCTION =====================
 @st.cache_data(ttl=900)
@@ -132,16 +143,21 @@ def analyze(symbol):
             "1m Trend":"No Data",
             "3m Trend":"No Data",
             "15m Trend":"No Data",
+            "3m SMA Signal":"No Data",
             "Final Signal":"⚠️ No Data"
         }
 
     signals = {}
     cmp_price = round(list(dfs.values())[-1]["Close"].iloc[-1], 2)
+    sma_3m = "No Data"
 
     for tf, df_tf in dfs.items():
         df_st = supertrend(df_tf, period=10, multiplier=3)
         last = df_st.iloc[-1]
         signals[tf] = "🟢 Bullish" if bool(last["Supertrend"]) else "🔴 Bearish"
+
+        if tf == "3m":
+            sma_3m = sma_signal(df_tf, period=20)
 
     if len(set(signals.values())) == 1:
         final_signal = f"✅ Triple Supertrend {list(signals.values())[0]}"
@@ -149,7 +165,7 @@ def analyze(symbol):
         final_signal = "⏸️ Mixed"
 
     for tf in ["1m","3m","15m"]:
-        if tf not in signals: signals[tf]="No Data"
+        if tf not in signals: signals[tf] = "No Data"
 
     return {
         "Stock": symbol.replace(".NS","").replace("^",""),
@@ -157,6 +173,7 @@ def analyze(symbol):
         "1m Trend": signals["1m"],
         "3m Trend": signals["3m"],
         "15m Trend": signals["15m"],
+        "3m SMA Signal": sma_3m,
         "Final Signal": final_signal
     }
 
@@ -177,14 +194,14 @@ progress_bar = st.progress(0)
 status_text = st.empty()
 last_refresh = st.empty()
 
-for i, stock in enumerate(stock_list,1):
+for i, stock in enumerate(stock_list, 1):
     status_text.text(f"Processing {i}/{len(stock_list)}: {stock}...")
     try:
         res = analyze(stock)
         results.append(res)
     except Exception as e:
         print(f"{stock} error: {e}")
-    progress_bar.progress(i/len(stock_list))
+    progress_bar.progress(i / len(stock_list))
 
 progress_bar.empty()
 status_text.empty()
@@ -197,37 +214,51 @@ if not df_result.empty:
     def highlight_trend(val):
         if "Bullish" in val: return "color: green; font-weight:bold"
         elif "Bearish" in val: return "color: red; font-weight:bold"
+        elif "Breakout" in val: return "color: green; font-weight:bold"
+        elif "Breakdown" in val: return "color: red; font-weight:bold"
         elif "Mixed" in val: return "color: orange; font-weight:bold"
         elif "No Data" in val: return "color: gray; font-style:italic"
         else: return ""
 
-    st.dataframe(df_result.style.applymap(
-        highlight_trend, subset=["1m Trend","3m Trend","15m Trend","Final Signal"]
-    ), use_container_width=True)
+    st.dataframe(
+        df_result.style.applymap(
+            highlight_trend,
+            subset=["1m Trend", "3m Trend", "15m Trend", "3m SMA Signal", "Final Signal"]
+        ),
+        use_container_width=True
+    )
 
-    alerts = df_result[df_result["Final Signal"].str.contains("Triple Supertrend")]
+    # ===================== COMBINED ALERTS =====================
+    alerts = df_result[
+        (df_result["Final Signal"].str.contains("Triple Supertrend")) |
+        (df_result["3m SMA Signal"].str.contains("Breakout|Breakdown"))
+    ]
+
     if st.checkbox("Show Alerts Only"):
         st.dataframe(alerts, use_container_width=True)
 
     if not alerts.empty:
-        st.warning("🚨 Triple Supertrend Alert(s) Found!")
+        st.warning("🚨 Combined Alerts Found!")
         for _, row in alerts.iterrows():
-            alert_msg = f"{row['Final Signal']} in {row['Stock']} ✅ CMP: {row['CMP']}"
-            st.write(alert_msg)
+            alert_msg = (
+                f"📢 {row['Stock']} Alert\n"
+                f"✅ CMP: {row['CMP']}\n"
+                f"📈 Supertrend: {row['Final Signal']}\n"
+                f"📊 3m SMA: {row['3m SMA Signal']}"
+            )
+            st.write(alert_msg.replace("\n", "  |  "))
 
-            # Send to Telegram only if enabled
             if st.session_state.alerts_enabled:
                 send_telegram_alert(alert_msg)
 
     # ===================== DOWNLOAD OPTION =====================
     csv = df_result.to_csv(index=False).encode("utf-8")
-    st.download_button("📂 Download Screener CSV", data=csv, file_name="supertrend_screener.csv", mime="text/csv")
+    st.download_button(
+        "📂 Download Screener CSV",
+        data=csv,
+        file_name="supertrend_screener.csv",
+        mime="text/csv"
+    )
 
 else:
     st.warning("⚠️ No valid data found.")
-
-
-
-
-
-
