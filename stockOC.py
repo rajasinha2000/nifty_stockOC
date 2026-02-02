@@ -46,9 +46,14 @@ if st.sidebar.button("⏹️ Stop Alerts"):
 
 # ===================== STOCK LIST =====================
 index_list = ["^NSEI", "^NSEBANK"]
+
+crypto_list = ["BTC-USD", "ETH-USD"]
+
 stock_list = [
-    "HDFCBANK.NS","TCS.NS","RELIANCE.NS","LT.NS","BHARTIARTL.NS","MARUTI.NS","KAYNES.NS"
-] + index_list
+    "HDFCBANK.NS","TCS.NS","RELIANCE.NS","LT.NS",
+    "BHARTIARTL.NS","MARUTI.NS","KAYNES.NS"
+] + index_list + crypto_list
+
 
 # ===================== SUPER TREND FUNCTION =====================
 def supertrend(df, period=10, multiplier=3):
@@ -229,7 +234,7 @@ if not df_result.empty:
     # ===================== COMBINED ALERTS =====================
     alerts = df_result[
         (df_result["Final Signal"].str.contains("Triple Supertrend")) |
-        (df_result["3m SMA Signal"].str.contains("Breakout|Breakdown"))
+        
     ]
 
     if st.checkbox("Show Alerts Only"):
@@ -239,10 +244,11 @@ if not df_result.empty:
         st.warning("🚨 Combined Alerts Found!")
         for _, row in alerts.iterrows():
             alert_msg = (
-                f"📢 {row['Stock']} Alert\n"
-                f"✅ CMP: {row['CMP']}\n"
-                f"📈 Supertrend: {row['Final Signal']}\n"
-                f"📊 3m SMA: {row['3m SMA Signal']}"
+                f"🚨 TRIPLE SUPERTREND ALERT 🚨\n\n"
+                f"📢 Symbol: {row['Stock']}\n"
+                f"💰 CMP: {row['CMP']}\n"
+                f"📈 Signal: {row['Final Signal']}\n"
+                f"⏱ Timeframes: 1m | 3m | 15m"
             )
             st.write(alert_msg.replace("\n", "  |  "))
 
@@ -260,5 +266,6 @@ if not df_result.empty:
 
 else:
     st.warning("⚠️ No valid data found.")
+
 
 
