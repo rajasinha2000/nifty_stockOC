@@ -234,7 +234,7 @@ if not df_result.empty:
     # ===================== COMBINED ALERTS =====================
     alerts = df_result[
         (df_result["Final Signal"].str.contains("Triple Supertrend")) |
-    ]
+   ]
 
     if st.checkbox("Show Alerts Only"):
         st.dataframe(alerts, use_container_width=True)
@@ -265,6 +265,7 @@ if not df_result.empty:
 
 else:
     st.warning("⚠️ No valid data found.")
+
 
 
 
