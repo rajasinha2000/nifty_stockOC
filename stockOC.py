@@ -50,8 +50,7 @@ index_list = ["^NSEI", "^NSEBANK"]
 crypto_list = ["BTC-USD", "ETH-USD"]
 
 stock_list = [
-    "HDFCBANK.NS","TCS.NS","RELIANCE.NS","LT.NS",
-    "BHARTIARTL.NS","MARUTI.NS","KAYNES.NS"
+    "HDFCBANK.NS","RELIANCE.NS","MARUTI.NS"
 ] + index_list + crypto_list
 
 
@@ -266,6 +265,7 @@ if not df_result.empty:
 
 else:
     st.warning("⚠️ No valid data found.")
+
 
 
 
